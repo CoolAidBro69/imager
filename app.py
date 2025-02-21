@@ -38,7 +38,6 @@ def authenticate_user_pin():
             auth = tweepy.OAuth1UserHandler(CONSUMER_KEY, CONSUMER_SECRET)
             auth.request_token = st.session_state["request_token"]
             try:
-                # Pass the PIN as a positional argument
                 auth.get_access_token(pin)
                 st.session_state["access_token"] = auth.access_token
                 st.session_state["access_token_secret"] = auth.access_token_secret
@@ -124,8 +123,12 @@ def upload_media_v2(filename):
     if response.status_code != 200:
         raise Exception(f"Media upload failed: {response.status_code} {response.text}")
     json_response = response.json()
-    # The media ID is now nested under "data"
-    media_id = json_response.get("data", {}).get("media_id")
+    # Try to get media_id from "data" first, then fallback to "id"
+    media_id = None
+    if "data" in json_response:
+        media_id = json_response.get("data", {}).get("media_id")
+    elif "id" in json_response:
+        media_id = json_response.get("id")
     if not media_id:
         raise Exception(f"Media upload failed to return a valid media_id: {json_response}")
     return media_id
