@@ -7,7 +7,7 @@ import tempfile
 import os
 
 # ------------------------------------------------------------------
-# Twitter App credentials (OAuth 1.0a: Consumer Key & Consumer Secret)
+# X (Twitter) App credentials (OAuth 1.0a: Consumer Key & Consumer Secret)
 # ------------------------------------------------------------------
 CONSUMER_KEY = "Jf72DRWCq4OQaEWxHpmZo8Z29"
 CONSUMER_SECRET = "6VhYEVYnSQ1yYGa4pnlXBtyddggiEaydmmq6f90LLyIuvXJI8x"
@@ -124,8 +124,11 @@ def upload_media_v2(filename):
     if response.status_code != 200:
         raise Exception(f"Media upload failed: {response.status_code} {response.text}")
     json_response = response.json()
-    # Assumes the response contains a "media_id" field
-    return json_response.get("media_id")
+    # The media ID is now nested under "data"
+    media_id = json_response.get("data", {}).get("media_id")
+    if not media_id:
+        raise Exception(f"Media upload failed to return a valid media_id: {json_response}")
+    return media_id
 
 # ------------------------------------------------------------------
 # Publish post with attached media using X API v2
