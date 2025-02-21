@@ -1,5 +1,7 @@
 import streamlit as st
 import tweepy
+import requests
+from requests_oauthlib import OAuth1
 from PIL import Image
 import tempfile
 import os
@@ -16,7 +18,6 @@ CONSUMER_SECRET = "6VhYEVYnSQ1yYGa4pnlXBtyddggiEaydmmq6f90LLyIuvXJI8x"
 def authenticate_user_pin():
     st.subheader("Authenticate with X (PIN-based OAuth)")
     
-    # Button: start OAuth flow and get request token
     if st.button("Start OAuth Flow"):
         auth = tweepy.OAuth1UserHandler(CONSUMER_KEY, CONSUMER_SECRET, callback="oob")
         try:
@@ -27,7 +28,6 @@ def authenticate_user_pin():
         except tweepy.TweepyException as e:
             st.error(f"Error obtaining request token: {e}")
     
-    # Input for the PIN provided by Twitter/X
     pin = st.text_input("Enter the PIN provided by X")
     if st.button("Verify PIN"):
         if "request_token" not in st.session_state:
@@ -46,10 +46,8 @@ def authenticate_user_pin():
             except tweepy.TweepyException as e:
                 st.error(f"Error obtaining access token: {e}")
 
-
-
 # ------------------------------------------------------------------
-# Get Tweepy API object using stored access tokens
+# Get Tweepy API object using stored access tokens (for verifying credentials)
 # ------------------------------------------------------------------
 def get_twitter_api():
     if "access_token" in st.session_state and "access_token_secret" in st.session_state:
@@ -106,30 +104,78 @@ def handle_image_resize():
     return None, None
 
 # ------------------------------------------------------------------
-# Publish images automatically as tweets
+# Upload media using X API v2
+# ------------------------------------------------------------------
+def upload_media_v2(filename):
+    """
+    Uploads media using the X API v2 media upload endpoint.
+    Returns the media_id on success.
+    """
+    url = "https://api.x.com/2/media/upload"
+    with open(filename, 'rb') as f:
+        files = {'media': f}
+        auth = OAuth1(
+            CONSUMER_KEY,
+            CONSUMER_SECRET,
+            st.session_state["access_token"],
+            st.session_state["access_token_secret"]
+        )
+        response = requests.post(url, files=files, auth=auth)
+    if response.status_code != 200:
+        raise Exception(f"Media upload failed: {response.status_code} {response.text}")
+    json_response = response.json()
+    # Assumes the response contains a "media_id" field
+    return json_response.get("media_id")
+
+# ------------------------------------------------------------------
+# Publish post with attached media using X API v2
+# ------------------------------------------------------------------
+def post_tweet_with_media_v2(media_id, text):
+    """
+    Publishes a post with attached media using the X API v2 posts endpoint.
+    Returns the JSON response on success.
+    """
+    url = "https://api.x.com/2/posts"
+    data = {
+        "text": text,
+        "media": {
+            "media_ids": [media_id]
+        }
+    }
+    auth = OAuth1(
+        CONSUMER_KEY,
+        CONSUMER_SECRET,
+        st.session_state["access_token"],
+        st.session_state["access_token_secret"]
+    )
+    response = requests.post(url, json=data, auth=auth)
+    if response.status_code != 201:
+        raise Exception(f"Post tweet failed: {response.status_code} {response.text}")
+    return response.json()
+
+# ------------------------------------------------------------------
+# Publish resized images: Upload each media and post a tweet with the media attached.
 # ------------------------------------------------------------------
 def publish_images():
-    api = get_twitter_api()
-    if api is None:
-        st.warning("Please authenticate first.")
-        return
+    # Ensure image is uploaded and resized
     resized_images, custom_sizes = handle_image_resize()
     if resized_images is None:
         st.info("Please upload an image to resize and publish.")
         return
-    
+
     if st.button("Publish Resized Images to Your Timeline"):
         try:
             for label, img in resized_images.items():
-                # Save the resized image in a temporary file before uploading
+                # Save the resized image to a temporary file
                 with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_file:
                     img.save(tmp_file.name)
                     filename = tmp_file.name
 
                 status_text = f"Resized image: {label} ({custom_sizes[label][0]}x{custom_sizes[label][1]})"
-                # Publish the image as a tweet on the user's timeline
-                media = api.media_upload(filename)
-                api.update_status(status=status_text, media_ids=[media.media_id])
+                # Upload media using the new v2 endpoint
+                media_id = upload_media_v2(filename)
+                # Publish post with the attached media
+                post_response = post_tweet_with_media_v2(media_id, status_text)
                 os.remove(filename)
             st.success("All resized images have been published successfully!")
         except Exception as e:
@@ -139,7 +185,7 @@ def publish_images():
 # Main Streamlit App
 # ------------------------------------------------------------------
 def main():
-    st.title("X (Twitter) PIN-based OAuth, Image Resizer & Publisher")
+    st.title("X (Twitter) PIN-based OAuth, Image Resizer & Publisher using API v2")
     
     # Step 1: Authentication
     if "access_token" not in st.session_state:
@@ -149,7 +195,6 @@ def main():
         api = get_twitter_api()
         if api:
             try:
-                # Use verify_credentials() to fetch user profile details
                 user = api.verify_credentials()
                 st.write(f"Logged in as **@{user.screen_name}**.")
             except Exception as e:
