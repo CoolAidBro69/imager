@@ -38,6 +38,7 @@ def authenticate_user_pin():
             auth = tweepy.OAuth1UserHandler(CONSUMER_KEY, CONSUMER_SECRET)
             auth.request_token = st.session_state["request_token"]
             try:
+                # Pass the PIN as a positional argument
                 auth.get_access_token(pin)
                 st.session_state["access_token"] = auth.access_token
                 st.session_state["access_token_secret"] = auth.access_token_secret
@@ -73,21 +74,22 @@ def handle_image_resize():
             st.error("Error loading image. Please try a valid image file.")
             st.stop()
         
-        # Predefined dimension presets (modifiable via settings)
-        default_sizes = {
-            "300x250": (300, 250),
-            "728x90": (728, 90),
-            "160x600": (160, 600),
-            "300x600": (300, 600)
-        }
+        # Predefined dimension presets labeled as Image 1, Image 2, etc.
+        default_dimensions = [
+            ("Image 1", (300, 250)),
+            ("Image 2", (728, 90)),
+            ("Image 3", (160, 600)),
+            ("Image 4", (300, 600))
+        ]
         st.write("Configure Desired Dimensions (Optional):")
         custom_sizes = {}
-        for label, (w, h) in default_sizes.items():
+        # Allow user to override dimensions if desired.
+        for label, (default_w, default_h) in default_dimensions:
             col1, col2 = st.columns(2)
             with col1:
-                new_w = st.number_input(f"Width for {label}", value=w, step=1, key=f"{label}_w")
+                new_w = st.number_input(f"Width for {label}", value=default_w, step=1, key=f"{label}_w")
             with col2:
-                new_h = st.number_input(f"Height for {label}", value=h, step=1, key=f"{label}_h")
+                new_h = st.number_input(f"Height for {label}", value=default_h, step=1, key=f"{label}_h")
             custom_sizes[label] = (new_w, new_h)
         
         st.subheader("Resized Image Previews")
@@ -163,6 +165,11 @@ def post_tweet_with_media_v2(media_id, text):
 # Publish resized images: Upload each media and post a tweet with the media attached.
 # ------------------------------------------------------------------
 def publish_images():
+    # Prevent proceeding if the user is not authorized.
+    if "access_token" not in st.session_state or "access_token_secret" not in st.session_state:
+        st.warning("Please complete the authentication process before proceeding.")
+        return
+
     # Ensure image is uploaded and resized
     resized_images, custom_sizes = handle_image_resize()
     if resized_images is None:
@@ -177,7 +184,8 @@ def publish_images():
                     img.save(tmp_file.name)
                     filename = tmp_file.name
 
-                status_text = f"Resized image: {label} ({custom_sizes[label][0]}x{custom_sizes[label][1]})"
+                # Use the label (e.g., "Image 1") in the post text
+                status_text = f"{label} ({custom_sizes[label][0]}x{custom_sizes[label][1]})"
                 # Upload media using the new v2 endpoint
                 media_id = upload_media_v2(filename)
                 # Publish post with the attached media
@@ -206,9 +214,12 @@ def main():
             except Exception as e:
                 st.error(f"Error fetching user profile: {e}")
     
-    # Step 2: Image Processing & Automatic Publishing
-    st.subheader("Image Processing & Publishing")
-    publish_images()
+    # Only show image processing and publishing if the user is authenticated.
+    if "access_token" in st.session_state and "access_token_secret" in st.session_state:
+        st.subheader("Image Processing & Publishing")
+        publish_images()
+    else:
+        st.info("Please authenticate to enable image upload and publishing.")
 
 if __name__ == "__main__":
     main()
