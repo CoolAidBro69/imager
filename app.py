@@ -199,7 +199,7 @@ def publish_images():
 # Main Streamlit App
 # ------------------------------------------------------------------
 def main():
-    st.title("X (Twitter) PIN-based OAuth, Image Resizer & Publisher using API v2")
+    st.title("Image Resizer & Publisher for X")
     
     # Step 1: Authentication
     if "access_token" not in st.session_state:
